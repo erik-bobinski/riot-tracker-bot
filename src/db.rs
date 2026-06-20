@@ -13,15 +13,16 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Formatter;
 use std::fs;
 use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DatabaseAccount {
     pub discord_user_id: u64,
-    pub puuid: String,
-    pub name: String,
-    pub tag: String,
-    pub region: String,
-    pub platform: String,
+    pub valorant_name: String,
+    pub valorant_tag: String,
+    pub valorant_region: String,
+    pub valorant_platform: String,
+    pub last_seen_valorant_match_id: Option<Uuid>,
     pub added_at: DateTime<Utc>,
 }
 
