@@ -10,18 +10,19 @@
 */
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::fmt::Formatter;
+use std::fmt::{Formatter, write};
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct DatabaseAccount {
     pub discord_user_id: u64,
-    pub valorant_name: String,
-    pub valorant_tag: String,
-    pub valorant_region: String,
-    pub valorant_platform: String,
+    pub puuid: String,
+    pub valorant_name: Option<String>,
+    pub valorant_tag: Option<String>,
+    pub valorant_region: Option<String>,
+    pub valorant_platform: Option<String>,
     pub last_seen_valorant_match_id: Option<Uuid>,
     pub added_at: DateTime<Utc>,
 }
@@ -30,7 +31,8 @@ pub struct DatabaseAccount {
 pub enum DbError {
     Io(std::io::Error),
     Serde(serde_json::Error),
-    Duplicate { puuid: String },
+    DuplicatePuuid { puuid: String },
+    DuplicateDiscordUserId { discord_user_id: u64 },
     NotFound { puuid: String },
 }
 impl From<std::io::Error> for DbError {
@@ -43,6 +45,20 @@ impl From<serde_json::Error> for DbError {
         DbError::Serde(err)
     }
 }
+impl std::fmt::Display for DbError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DbError::Io(e) => write!(f, "io error: {e}"),
+            DbError::Serde(e) => write!(f, "json error: {e}"),
+            DbError::DuplicateDiscordUserId { discord_user_id } => {
+                write!(f, "discord account already tracked: {discord_user_id}")
+            }
+            DbError::DuplicatePuuid { puuid } => write!(f, "riot account already tracked: {puuid}"),
+            DbError::NotFound { puuid } => write!(f, "discord account not found: {puuid}"),
+        }
+    }
+}
+impl std::error::Error for DbError {}
 
 pub struct Database {
     path: PathBuf,
@@ -71,5 +87,30 @@ impl Database {
         fs::rename(tmp_path, &self.path)?;
 
         Ok(())
+    }
+
+    // add new discord/riot account to db
+    pub fn add_account(&mut self, account: DatabaseAccount) -> Result<(), DbError> {
+        // no dupe discord users
+        let already_tracked_puuid = self
+            .accounts
+            .iter()
+            .any(|acct| acct.discord_user_id == account.discord_user_id);
+        if already_tracked_puuid {
+            return Err(DbError::DuplicateDiscordUserId {
+                discord_user_id: account.discord_user_id,
+            });
+        }
+
+        // no dupe riot users
+        let already_tracked_puuid = self.accounts.iter().any(|acct| acct.puuid == account.puuid);
+        if already_tracked_puuid {
+            return Err(DbError::DuplicatePuuid {
+                puuid: account.puuid,
+            });
+        }
+
+        self.accounts.push(account);
+        self.save()
     }
 }

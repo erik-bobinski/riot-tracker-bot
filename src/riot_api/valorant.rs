@@ -62,11 +62,6 @@ pub struct HenrikResponse<T> {
 #[derive(Debug, Deserialize)]
 pub struct AccountData {
     pub puuid: String,
-    pub region: String,
-    pub account_level: u64,
-    pub name: String,
-    pub tag: String,
-    pub platforms: Vec<String>,
 }
 
 //response from /valorant/v3/matches/{region}/{name}/{tag}
