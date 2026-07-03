@@ -33,7 +33,7 @@ pub enum DbError {
     Serde(serde_json::Error),
     DuplicatePuuid { puuid: String },
     DuplicateDiscordUserId { discord_user_id: u64 },
-    NotFound { puuid: String },
+    NotFound { discord_user_id: u64 },
 }
 impl From<std::io::Error> for DbError {
     fn from(err: std::io::Error) -> Self {
@@ -54,7 +54,9 @@ impl std::fmt::Display for DbError {
                 write!(f, "discord account already tracked: {discord_user_id}")
             }
             DbError::DuplicatePuuid { puuid } => write!(f, "riot account already tracked: {puuid}"),
-            DbError::NotFound { puuid } => write!(f, "discord account not found: {puuid}"),
+            DbError::NotFound { discord_user_id } => {
+                write!(f, "discord account not found: {discord_user_id}")
+            }
         }
     }
 }
@@ -112,5 +114,21 @@ impl Database {
 
         self.accounts.push(account);
         self.save()
+    }
+
+    // remove all disord user's data from db
+    pub fn delete_account(&mut self, discord_user_id: u64) -> Result<(), DbError> {
+        let index = self
+            .accounts
+            .iter()
+            .position(|acct| acct.discord_user_id == discord_user_id);
+
+        match index {
+            Some(i) => {
+                self.accounts.remove(i);
+                self.save()
+            }
+            None => Err(DbError::NotFound { discord_user_id }),
+        }
     }
 }

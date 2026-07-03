@@ -1,54 +1,12 @@
+use crate::db::Database;
+use crate::types::Data;
+use serenity::prelude::*;
 use std::env;
 
-use serenity::prelude::*;
-
-use poise::serenity_prelude as serenity_poise;
-
-use crate::db::Database;
-
-mod riot_api;
-
+mod commands;
 mod db;
-
-// fundamental types for discord bot
-struct Data {
-    henrik_client: riot_api::valorant::HenrikClient,
-    db: Mutex<Database>,
-}
-type Error = Box<dyn std::error::Error + Send + Sync>;
-type Context<'a> = poise::Context<'a, Data, Error>;
-
-#[poise::command(slash_command)]
-async fn signup(
-    ctx: Context<'_>,
-    #[description = "Riot Name"] riot_name: String,
-    #[description = "Riot Tag"] riot_tag: String,
-) -> Result<(), Error> {
-    let riot_account = match ctx
-        .data()
-        .henrik_client
-        .get_account(&riot_name, &riot_tag)
-        .await
-    {
-        Ok(riot_account) => riot_account,
-        Err(_) => {
-            ctx.say("Couldn't find riot account :(").await?;
-            return Ok(());
-        }
-    };
-
-    let mut db = ctx.data().db.lock().await;
-    db.add_account(db::DatabaseAccount {
-        discord_user_id: ctx.author().id.get(),
-        puuid: riot_account.puuid,
-        added_at: chrono::Utc::now(),
-        ..Default::default()
-    })?;
-
-    ctx.say(format!("{} just signed up!", ctx.author().name))
-        .await?;
-    Ok(())
-}
+mod riot_api;
+mod types;
 
 #[tokio::main]
 async fn main() {
@@ -63,7 +21,7 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![signup()],
+            commands: commands::all(),
             ..Default::default()
         })
         .setup(|ctx, _ready, framework| {
