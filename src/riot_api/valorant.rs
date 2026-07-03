@@ -1,3 +1,5 @@
+use serde::Deserialize;
+
 pub struct HenrikClient {
     http: reqwest::Client,
     base_url: String,
@@ -12,19 +14,40 @@ impl HenrikClient {
         }
     }
 
-    //TODO:
-    pub fn get_account(&self, name: &str, tag: &str) -> Result<AccountData, reqwest::Error> {
-        todo!()
+    pub async fn get_account(&self, name: &str, tag: &str) -> Result<AccountData, reqwest::Error> {
+        let url = format!("{}/valorant/v2/account/{}/{}", self.base_url, name, tag);
+
+        Ok(self
+            .http
+            .get(url)
+            .header("Authorization", &self.api_key)
+            .send()
+            .await?
+            .json::<HenrikResponse<AccountData>>()
+            .await?
+            .data)
     }
 
-    //TODO:
-    pub fn get_matches(
+    pub async fn get_matches(
         &self,
         name: &str,
         tag: &str,
         region: &str,
-    ) -> Result<MatchData, reqwest::Error> {
-        todo!()
+    ) -> Result<Vec<MatchSummary>, reqwest::Error> {
+        let url = format!(
+            "{}/valorant/v3/matches/{}/{}/{}",
+            self.base_url, region, name, tag
+        );
+
+        Ok(self
+            .http
+            .get(url)
+            .header("Authorization", &self.api_key)
+            .send()
+            .await?
+            .json::<HenrikResponse<Vec<MatchSummary>>>()
+            .await?
+            .data)
     }
 }
 
@@ -46,6 +69,40 @@ pub struct AccountData {
     pub platforms: Vec<String>,
 }
 
-//TODO: response from /valorant/v3/matches/{region}/{name}/{tag}
+//response from /valorant/v3/matches/{region}/{name}/{tag}
 #[derive(Debug, Deserialize)]
-pub struct MatchData {}
+pub struct MatchSummary {
+    metadata: MatchMetadata,
+    players: MatchPlayers,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MatchMetadata {
+    map: String,
+    mode: String,
+    game_length: u64,
+    region: String,
+    matchid: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MatchPlayers {
+    all_players: Vec<MatchPlayer>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MatchPlayer {
+    puuid: String,
+    name: String,
+    tag: String,
+    team: String,
+    character: String,
+    currenttier_patched: String,
+    player_card: String,
+    stats: PlayerStats,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlayerStats {
+    kills: u32,
+}
