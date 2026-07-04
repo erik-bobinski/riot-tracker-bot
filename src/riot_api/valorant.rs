@@ -62,12 +62,13 @@ pub struct HenrikResponse<T> {
 #[derive(Debug, Deserialize)]
 pub struct AccountData {
     pub puuid: String,
+    pub region: String,
 }
 
 //response from /valorant/v3/matches/{region}/{name}/{tag}
 #[derive(Debug, Deserialize)]
 pub struct MatchSummary {
-    metadata: MatchMetadata,
+    pub metadata: MatchMetadata,
     players: MatchPlayers,
 }
 
@@ -77,7 +78,7 @@ pub struct MatchMetadata {
     mode: String,
     game_length: u64,
     region: String,
-    matchid: String,
+    pub matchid: String,
 }
 
 #[derive(Debug, Deserialize)]

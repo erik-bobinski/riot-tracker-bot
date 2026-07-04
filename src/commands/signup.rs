@@ -20,6 +20,18 @@ pub async fn signup(
         }
     };
 
+    // unlike lol, henrik's account lookup already tells us the region, so no
+    // brute-force detection needed; just baseline to the newest match like lol does
+    let val_matches = ctx
+        .data()
+        .henrik_client
+        .get_matches(&riot_name, &riot_tag, &valorant_account.region)
+        .await?;
+    let last_seen_val_match_id = val_matches
+        .first()
+        .map(|m| m.metadata.matchid.parse())
+        .transpose()?;
+
     let lol_account = match ctx
         .data()
         .riot_client
@@ -52,6 +64,8 @@ pub async fn signup(
         val_puuid: valorant_account.puuid,
         val_name: Some(riot_name.clone()),
         val_tag: Some(riot_tag.clone()),
+        val_region: Some(valorant_account.region),
+        last_seen_val_match_id,
         lol_puuid: lol_account.puuid,
         lol_name: Some(riot_name),
         lol_tag: Some(riot_tag),

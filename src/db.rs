@@ -22,7 +22,6 @@ pub struct DatabaseAccount {
     pub val_name: Option<String>,
     pub val_tag: Option<String>,
     pub val_region: Option<String>,
-    pub val_platform: Option<String>,
     pub last_seen_val_match_id: Option<Uuid>,
     pub lol_puuid: String,
     pub lol_name: Option<String>,
