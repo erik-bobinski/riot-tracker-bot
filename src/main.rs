@@ -30,11 +30,14 @@ async fn main() {
 
                 let henrik_api_key =
                     env::var("HENRIK_API_KEY").expect("Expected HENRIK_API_KEY in environment");
+                let riot_api_key =
+                    env::var("RIOT_API_KEY").expect("Expected RIOT_API_KEY in environment");
                 let db_path = env::var("DB_PATH").unwrap_or_else(|_| "accounts.json".to_string());
                 let db = Database::load(&db_path)?;
 
                 Ok(Data {
                     henrik_client: riot_api::valorant::HenrikClient::new(henrik_api_key),
+                    riot_client: riot_api::lol::RiotClient::new(riot_api_key),
                     db: Mutex::new(db),
                 })
             })

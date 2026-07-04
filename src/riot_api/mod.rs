@@ -1,2 +1,2 @@
-pub mod league;
+pub mod lol;
 pub mod valorant;
