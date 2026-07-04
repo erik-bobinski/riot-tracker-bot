@@ -50,6 +50,8 @@ pub async fn signup(
     db.add_account(db::DatabaseAccount {
         discord_user_id: ctx.author().id.get(),
         val_puuid: valorant_account.puuid,
+        val_name: Some(riot_name.clone()),
+        val_tag: Some(riot_tag.clone()),
         lol_puuid: lol_account.puuid,
         lol_name: Some(riot_name),
         lol_tag: Some(riot_tag),
