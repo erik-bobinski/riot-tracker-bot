@@ -1,5 +1,9 @@
 use serde::Deserialize;
 
+// Match-V5 continental routing values. A player's account lives behind
+// exactly one of these; there's no way to know which without asking or probing.
+const MATCH_REGIONS: [&str; 4] = ["americas", "asia", "europe", "sea"];
+
 pub struct RiotClient {
     http: reqwest::Client,
     api_key: String,
@@ -12,15 +16,12 @@ impl RiotClient {
         }
     }
 
-    pub async fn get_account(
-        &self,
-        name: &str,
-        tag: &str,
-        region: &str,
-    ) -> Result<AccountData, reqwest::Error> {
+    // Account-V1 can be queried from any regional cluster for any account,
+    // so we always route through the cluster nearest our deployment (Virginia).
+    pub async fn get_account(&self, name: &str, tag: &str) -> Result<AccountData, reqwest::Error> {
         let url = format!(
-            "https://{}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{}/{}",
-            region, name, tag
+            "https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{}/{}",
+            name, tag
         );
 
         self.http
@@ -32,24 +33,31 @@ impl RiotClient {
             .await
     }
 
+    pub async fn get_match_ids(
+        &self,
+        puuid: &str,
+        region: &str,
+    ) -> Result<Vec<String>, reqwest::Error> {
+        let url = format!(
+            "https://{}.api.riotgames.com/lol/match/v5/matches/by-puuid/{}/ids",
+            region, puuid
+        );
+
+        self.http
+            .get(url)
+            .header("X-Riot-Token", &self.api_key)
+            .send()
+            .await?
+            .json::<Vec<String>>()
+            .await
+    }
+
     pub async fn get_matches(
         &self,
         puuid: &str,
         region: &str,
     ) -> Result<Vec<MatchSummary>, reqwest::Error> {
-        let ids_url = format!(
-            "https://{}.api.riotgames.com/lol/match/v5/matches/by-puuid/{}/ids",
-            region, puuid
-        );
-
-        let match_ids = self
-            .http
-            .get(ids_url)
-            .header("X-Riot-Token", &self.api_key)
-            .send()
-            .await?
-            .json::<Vec<String>>()
-            .await?;
+        let match_ids = self.get_match_ids(puuid, region).await?;
 
         let mut matches = Vec::with_capacity(match_ids.len());
         for match_id in match_ids {
@@ -71,6 +79,23 @@ impl RiotClient {
         }
 
         Ok(matches)
+    }
+
+    // Unlike account-v1, match-v5 results only come back non-empty from the
+    // continental cluster the account's platform actually belongs to, so we
+    // have to probe each one. Returns None if the account has no match history
+    // in any cluster yet (nothing to detect from). Hands back the match ids
+    // found alongside the region so callers can baseline off the newest one
+    // without a second lookup.
+    pub async fn detect_region(&self, puuid: &str) -> Result<Option<(String, Vec<String>)>, reqwest::Error> {
+        for region in MATCH_REGIONS {
+            let match_ids = self.get_match_ids(puuid, region).await?;
+            if !match_ids.is_empty() {
+                return Ok(Some((region.to_string(), match_ids)));
+            }
+        }
+
+        Ok(None)
     }
 }
 
