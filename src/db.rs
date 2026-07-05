@@ -19,13 +19,13 @@ use uuid::Uuid;
 pub struct DatabaseAccount {
     pub discord_user_id: u64,
     pub val_puuid: String,
-    pub val_name: Option<String>,
-    pub val_tag: Option<String>,
-    pub val_region: Option<String>,
+    pub val_name: String,
+    pub val_tag: String,
+    pub val_region: String,
     pub last_seen_val_match_id: Option<Uuid>,
     pub lol_puuid: String,
-    pub lol_name: Option<String>,
-    pub lol_tag: Option<String>,
+    pub lol_name: String,
+    pub lol_tag: String,
     pub lol_region: Option<String>,
     pub last_seen_lol_match_id: Option<String>,
     pub added_at: DateTime<Utc>,
@@ -148,5 +148,9 @@ impl Database {
             }
             None => Err(DbError::NotFound { discord_user_id }),
         }
+    }
+
+    pub fn get_accounts(&self) -> Vec<DatabaseAccount> {
+        self.accounts.clone()
     }
 }
