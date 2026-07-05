@@ -38,15 +38,28 @@ impl HenrikClient {
             self.base_url, region, puuid
         );
 
+        // filter out henrik match results that are still being processed by riot's APIs
         Ok(self
             .http
             .get(url)
             .header("Authorization", &self.api_key)
             .send()
             .await?
-            .json::<HenrikResponse<Vec<MatchSummary>>>()
+            .json::<HenrikResponse<Vec<RawMatchSummary>>>()
             .await?
-            .data)
+            .data
+            .into_iter()
+            .filter_map(|m| match (m.metadata, m.players, m.teams) {
+                (Some(metadata), Some(players), Some(teams)) if m.is_available => {
+                    Some(MatchSummary {
+                        metadata,
+                        players,
+                        teams,
+                    })
+                }
+                _ => None,
+            })
+            .collect())
     }
 }
 
@@ -64,8 +77,18 @@ pub struct AccountData {
     pub region: String,
 }
 
-//response from /valorant/v3/matches/{region}/{name}/{tag}
+// response item from /valorant/v3/by-puuid/matches/{region}/{puuid}; matches still
+// being processed have is_available: false and null data fields
 #[derive(Debug, Deserialize)]
+struct RawMatchSummary {
+    is_available: bool,
+    metadata: Option<MatchMetadata>,
+    players: Option<MatchPlayers>,
+    teams: Option<MatchTeams>,
+}
+
+// a fully processed match, as returned to callers
+#[derive(Debug)]
 pub struct MatchSummary {
     pub metadata: MatchMetadata,
     pub players: MatchPlayers,
