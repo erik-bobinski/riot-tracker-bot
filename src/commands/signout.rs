@@ -1,5 +1,6 @@
 use crate::types::{Context, Error};
 
+/// Stop tracking your riot account
 #[poise::command(slash_command)]
 pub async fn signout(ctx: Context<'_>) -> Result<(), Error> {
     let mut db = ctx.data().db.lock().await;

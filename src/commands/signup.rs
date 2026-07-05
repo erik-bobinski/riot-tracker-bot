@@ -1,6 +1,7 @@
 use crate::db;
 use crate::types::{Context, Error};
 
+/// Get your riot account's match results reported
 #[poise::command(slash_command)]
 pub async fn signup(
     ctx: Context<'_>,
