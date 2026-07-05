@@ -2,9 +2,12 @@ use crate::db::Database;
 use crate::types::Data;
 use serenity::prelude::*;
 use std::env;
+use std::sync::Arc;
 
 mod commands;
 mod db;
+mod discord;
+mod polling;
 mod riot_api;
 mod types;
 
@@ -33,12 +36,29 @@ async fn main() {
                 let riot_api_key =
                     env::var("RIOT_API_KEY").expect("Expected RIOT_API_KEY in environment");
                 let db_path = env::var("DB_PATH").unwrap_or_else(|_| "accounts.json".to_string());
+                let notification_channel_id = env::var("NOTIFICATION_CHANNEL_ID")
+                    .expect("Expected NOTIFICATION_CHANNEL_ID in environment")
+                    .parse::<u64>()
+                    .expect("NOTIFICATION_CHANNEL_ID must be a valid channel id");
+                let notification_channel_id = serenity::model::id::ChannelId::new(notification_channel_id);
+
                 let db = Database::load(&db_path)?;
+                let db = Arc::new(Mutex::new(db));
+                let henrik_client = Arc::new(riot_api::valorant::HenrikClient::new(henrik_api_key));
+                let riot_client = Arc::new(riot_api::lol::RiotClient::new(riot_api_key));
+
+                tokio::spawn(polling::run(
+                    ctx.http.clone(),
+                    db.clone(),
+                    henrik_client.clone(),
+                    riot_client.clone(),
+                    notification_channel_id,
+                ));
 
                 Ok(Data {
-                    henrik_client: riot_api::valorant::HenrikClient::new(henrik_api_key),
-                    riot_client: riot_api::lol::RiotClient::new(riot_api_key),
-                    db: Mutex::new(db),
+                    henrik_client,
+                    riot_client,
+                    db,
                 })
             })
         })

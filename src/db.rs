@@ -18,6 +18,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct DatabaseAccount {
     pub discord_user_id: u64,
+    pub discord_name: String,
     pub val_puuid: String,
     pub val_name: String,
     pub val_tag: String,
@@ -152,5 +153,23 @@ impl Database {
 
     pub fn get_accounts(&self) -> Vec<DatabaseAccount> {
         self.accounts.clone()
+    }
+
+    // overwrite an existing account's data, matched by discord_user_id
+    pub fn update_account(&mut self, account: DatabaseAccount) -> Result<(), DbError> {
+        let index = self
+            .accounts
+            .iter()
+            .position(|acct| acct.discord_user_id == account.discord_user_id);
+
+        match index {
+            Some(i) => {
+                self.accounts[i] = account;
+                self.save()
+            }
+            None => Err(DbError::NotFound {
+                discord_user_id: account.discord_user_id,
+            }),
+        }
     }
 }

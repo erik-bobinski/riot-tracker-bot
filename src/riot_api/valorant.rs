@@ -69,13 +69,13 @@ pub struct AccountData {
 #[derive(Debug, Deserialize)]
 pub struct MatchSummary {
     pub metadata: MatchMetadata,
-    players: MatchPlayers,
+    pub players: MatchPlayers,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct MatchMetadata {
-    map: String,
-    mode: String,
+    pub map: String,
+    pub mode: String,
     game_length: u64,
     region: String,
     pub matchid: String,
@@ -83,22 +83,23 @@ pub struct MatchMetadata {
 
 #[derive(Debug, Deserialize)]
 pub struct MatchPlayers {
-    all_players: Vec<MatchPlayer>,
+    pub all_players: Vec<MatchPlayer>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct MatchPlayer {
-    puuid: String,
-    name: String,
-    tag: String,
-    team: String,
-    character: String,
+    pub puuid: String,
+    pub name: String,
+    pub tag: String,
+    pub team: String,
+    pub character: String,
     currenttier_patched: String,
     player_card: String,
-    stats: PlayerStats,
+    pub stats: PlayerStats,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PlayerStats {
-    kills: u32,
+    pub kills: u32,
+    pub deaths: u32,
 }

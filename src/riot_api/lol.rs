@@ -52,6 +52,25 @@ impl RiotClient {
             .await
     }
 
+    pub async fn get_match(
+        &self,
+        match_id: &str,
+        region: &str,
+    ) -> Result<MatchSummary, reqwest::Error> {
+        let url = format!(
+            "https://{}.api.riotgames.com/lol/match/v5/matches/{}",
+            region, match_id
+        );
+
+        self.http
+            .get(url)
+            .header("X-Riot-Token", &self.api_key)
+            .send()
+            .await?
+            .json::<MatchSummary>()
+            .await
+    }
+
     pub async fn get_matches(
         &self,
         puuid: &str,
@@ -61,21 +80,7 @@ impl RiotClient {
 
         let mut matches = Vec::with_capacity(match_ids.len());
         for match_id in match_ids {
-            let match_url = format!(
-                "https://{}.api.riotgames.com/lol/match/v5/matches/{}",
-                region, match_id
-            );
-
-            let summary = self
-                .http
-                .get(match_url)
-                .header("X-Riot-Token", &self.api_key)
-                .send()
-                .await?
-                .json::<MatchSummary>()
-                .await?;
-
-            matches.push(summary);
+            matches.push(self.get_match(&match_id, region).await?);
         }
 
         Ok(matches)
@@ -140,4 +145,5 @@ pub struct MatchParticipant {
     pub team_id: u32,
     pub champion_name: String,
     pub kills: u32,
+    pub deaths: u32,
 }
