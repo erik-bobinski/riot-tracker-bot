@@ -37,7 +37,7 @@ pub async fn signup(
             let val_matches = ctx
                 .data()
                 .henrik_client
-                .get_matches(&riot_name, &riot_tag, &valorant_account.region)
+                .get_matches(&valorant_account.puuid, &valorant_account.region)
                 .await?;
             let last_seen_val_match_id = val_matches
                 .first()

@@ -30,13 +30,12 @@ impl HenrikClient {
 
     pub async fn get_matches(
         &self,
-        name: &str,
-        tag: &str,
+        puuid: &str,
         region: &str,
     ) -> Result<Vec<MatchSummary>, reqwest::Error> {
         let url = format!(
-            "{}/valorant/v3/matches/{}/{}/{}",
-            self.base_url, region, name, tag
+            "{}/valorant/v3/by-puuid/matches/{}/{}",
+            self.base_url, region, puuid
         );
 
         Ok(self

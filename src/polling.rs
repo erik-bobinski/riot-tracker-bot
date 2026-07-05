@@ -37,11 +37,7 @@ pub async fn run(
                     // baseline to the newest match instead of reporting their whole
                     // history the moment the account resolves
                     let val_matches = henrik_client
-                        .get_matches(
-                            &account.riot_name,
-                            &account.riot_tag,
-                            &valorant_account.region,
-                        )
+                        .get_matches(&valorant_account.puuid, &valorant_account.region)
                         .await
                         .unwrap_or_default();
                     account.last_seen_val_match_id = val_matches
@@ -56,7 +52,7 @@ pub async fn run(
             // user has val_region only if they play valorant
             if let Some(val_region) = account.val_region.clone() {
                 let val_matches = match henrik_client
-                    .get_matches(&account.riot_name, &account.riot_tag, &val_region)
+                    .get_matches(&account.val_puuid, &val_region)
                     .await
                 {
                     Ok(matches) => matches,
@@ -84,6 +80,32 @@ pub async fn run(
                 if let Some(newest) = val_matches.first() {
                     if let Ok(newest_id) = newest.metadata.matchid.parse() {
                         account.last_seen_val_match_id = Some(newest_id);
+                    }
+                }
+            }
+
+            // lol region can't be detected until the account has match history, so it
+            // may still be unresolved from signup; retry it here now that the player
+            // may have finished a game since then
+            if account.lol_region.is_none() {
+                // the account lookup itself may also have failed at signup
+                if account.lol_puuid.is_empty() {
+                    if let Ok(lol_account) = riot_client
+                        .get_account(&account.riot_name, &account.riot_tag)
+                        .await
+                    {
+                        account.lol_puuid = lol_account.puuid;
+                    }
+                }
+
+                if !account.lol_puuid.is_empty() {
+                    if let Ok(Some((region, match_ids))) =
+                        riot_client.detect_region(&account.lol_puuid).await
+                    {
+                        // baseline to the newest match instead of reporting their whole
+                        // history the moment the region resolves
+                        account.last_seen_lol_match_id = match_ids.into_iter().next();
+                        account.lol_region = Some(region);
                     }
                 }
             }
