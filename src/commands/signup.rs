@@ -6,58 +6,69 @@ use crate::types::{Context, Error};
 pub async fn signup(
     ctx: Context<'_>,
     #[description = "Riot Name"] riot_name: String,
-    #[description = "Riot Tag"] riot_tag: String,
+    #[description = "Riot Tag after the # (e.g. NA1)"] riot_tag: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
 
-    let valorant_account = match ctx
+    let valorant_account = ctx
         .data()
         .henrik_client
         .get_account(&riot_name, &riot_tag)
         .await
-    {
-        Ok(valorant_account) => valorant_account,
-        Err(_) => {
-            ctx.say("Couldn't find riot account :(").await?;
-            return Ok(());
-        }
-    };
+        .ok();
 
-    // unlike lol, henrik's account lookup already tells us the region, so no
-    // brute-force detection needed; just baseline to the newest match like lol does
-    let val_matches = ctx
-        .data()
-        .henrik_client
-        .get_matches(&riot_name, &riot_tag, &valorant_account.region)
-        .await?;
-    let last_seen_val_match_id = val_matches
-        .first()
-        .map(|m| m.metadata.matchid.parse())
-        .transpose()?;
-
-    let lol_account = match ctx
+    let lol_account = ctx
         .data()
         .riot_client
         .get_account(&riot_name, &riot_tag)
         .await
-    {
-        Ok(lol_account) => lol_account,
-        Err(_) => {
-            ctx.say("Couldn't find riot account :(").await?;
-            return Ok(());
-        }
-    };
+        .ok();
 
-    let detected = ctx
-        .data()
-        .riot_client
-        .detect_region(&lol_account.puuid)
-        .await?;
-    // baseline to the newest match on signup instead of backfilling full match
-    // data for everyone's existing history, to avoid a burst of api calls
-    let (lol_region, last_seen_lol_match_id) = match detected {
-        Some((region, match_ids)) => (Some(region), match_ids.into_iter().next()),
-        None => (None, None),
+    if valorant_account.is_none() && lol_account.is_none() {
+        ctx.say("Couldn't find recent account data for that Riot ID :(")
+            .await?;
+        return Ok(());
+    }
+
+    let (val_puuid, val_region, last_seen_val_match_id) =
+        if let Some(valorant_account) = valorant_account {
+            // unlike lol, henrik's account lookup already tells us the region, so no
+            // brute-force detection needed; just baseline to the newest match like lol does
+            let val_matches = ctx
+                .data()
+                .henrik_client
+                .get_matches(&riot_name, &riot_tag, &valorant_account.region)
+                .await?;
+            let last_seen_val_match_id = val_matches
+                .first()
+                .map(|m| m.metadata.matchid.parse())
+                .transpose()?;
+
+            (
+                valorant_account.puuid,
+                Some(valorant_account.region),
+                last_seen_val_match_id,
+            )
+        } else {
+            (String::new(), None, None)
+        };
+
+    let (lol_puuid, lol_region, last_seen_lol_match_id) = if let Some(lol_account) = lol_account {
+        // baseline to the newest match on signup instead of backfilling full match
+        // data for everyone's existing history, to avoid a burst of api calls
+        let detected = ctx
+            .data()
+            .riot_client
+            .detect_region(&lol_account.puuid)
+            .await?;
+        let (lol_region, last_seen_lol_match_id) = match detected {
+            Some((region, match_ids)) => (Some(region), match_ids.into_iter().next()),
+            None => (None, None),
+        };
+
+        (lol_account.puuid, lol_region, last_seen_lol_match_id)
+    } else {
+        (String::new(), None, None)
     };
 
     let mut db = ctx.data().db.lock().await;
@@ -65,14 +76,12 @@ pub async fn signup(
     db.add_account(db::DatabaseAccount {
         discord_user_id: ctx.author().id.get(),
         discord_name: ctx.author().name.clone(),
-        val_puuid: valorant_account.puuid,
-        val_name: riot_name.clone(),
-        val_tag: riot_tag.clone(),
-        val_region: valorant_account.region,
+        riot_name,
+        riot_tag,
+        val_puuid,
+        val_region,
         last_seen_val_match_id,
-        lol_puuid: lol_account.puuid,
-        lol_name: riot_name,
-        lol_tag: riot_tag,
+        lol_puuid,
         lol_region,
         last_seen_lol_match_id,
         added_at: chrono::Utc::now(),

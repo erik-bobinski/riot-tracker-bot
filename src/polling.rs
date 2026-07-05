@@ -26,34 +26,65 @@ pub async fn run(
         let accounts = db.lock().await.get_accounts();
 
         for mut account in accounts {
-            // report new val matches
-            let val_matches = match henrik_client
-                .get_matches(&account.val_name, &account.val_tag, &account.val_region)
-                .await
-            {
-                Ok(matches) => matches,
-                Err(_) => Vec::new(),
-            };
+            // henrik can't resolve an account with no match history yet, so a riot id
+            // entered at signup may still be unresolved; retry it here now that the
+            // player may have finished a game since then
+            if account.val_region.is_none() {
+                if let Ok(valorant_account) = henrik_client
+                    .get_account(&account.riot_name, &account.riot_tag)
+                    .await
+                {
+                    // baseline to the newest match instead of reporting their whole
+                    // history the moment the account resolves
+                    let val_matches = henrik_client
+                        .get_matches(
+                            &account.riot_name,
+                            &account.riot_tag,
+                            &valorant_account.region,
+                        )
+                        .await
+                        .unwrap_or_default();
+                    account.last_seen_val_match_id = val_matches
+                        .first()
+                        .and_then(|m| m.metadata.matchid.parse().ok());
 
-            let new_val_matches = val_matches
-                .iter()
-                .take_while(|m| m.metadata.matchid.parse().ok() != account.last_seen_val_match_id)
-                .collect::<Vec<_>>();
-
-            for m in new_val_matches {
-                let msg = discord::format_match_message(
-                    &account.discord_name,
-                    &discord::val_match_to_result(m, &account.val_puuid),
-                );
-
-                if let Err(e) = notification_channel_id.say(&http, msg).await {
-                    eprintln!("failed to send val match notification: {e}");
+                    account.val_puuid = valorant_account.puuid;
+                    account.val_region = Some(valorant_account.region);
                 }
             }
 
-            if let Some(newest) = val_matches.first() {
-                if let Ok(newest_id) = newest.metadata.matchid.parse() {
-                    account.last_seen_val_match_id = Some(newest_id);
+            // user has val_region only if they play valorant
+            if let Some(val_region) = account.val_region.clone() {
+                let val_matches = match henrik_client
+                    .get_matches(&account.riot_name, &account.riot_tag, &val_region)
+                    .await
+                {
+                    Ok(matches) => matches,
+                    Err(_) => Vec::new(),
+                };
+
+                let new_val_matches = val_matches
+                    .iter()
+                    .take_while(|m| {
+                        m.metadata.matchid.parse().ok() != account.last_seen_val_match_id
+                    })
+                    .collect::<Vec<_>>();
+
+                for m in new_val_matches {
+                    let msg = discord::format_match_message(
+                        &account.discord_name,
+                        &discord::val_match_to_result(m, &account.val_puuid),
+                    );
+
+                    if let Err(e) = notification_channel_id.say(&http, msg).await {
+                        eprintln!("failed to send val match notification: {e}");
+                    }
+                }
+
+                if let Some(newest) = val_matches.first() {
+                    if let Ok(newest_id) = newest.metadata.matchid.parse() {
+                        account.last_seen_val_match_id = Some(newest_id);
+                    }
                 }
             }
 

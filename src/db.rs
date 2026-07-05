@@ -19,14 +19,12 @@ use uuid::Uuid;
 pub struct DatabaseAccount {
     pub discord_user_id: u64,
     pub discord_name: String,
+    pub riot_name: String,
+    pub riot_tag: String,
     pub val_puuid: String,
-    pub val_name: String,
-    pub val_tag: String,
-    pub val_region: String,
+    pub val_region: Option<String>,
     pub last_seen_val_match_id: Option<Uuid>,
     pub lol_puuid: String,
-    pub lol_name: String,
-    pub lol_tag: String,
     pub lol_region: Option<String>,
     pub last_seen_lol_match_id: Option<String>,
     pub added_at: DateTime<Utc>,
@@ -109,22 +107,24 @@ impl Database {
             });
         }
 
-        // no dupe valorant users
-        let already_tracked_val_puuid = self
-            .accounts
-            .iter()
-            .any(|acct| acct.val_puuid == account.val_puuid);
+        // no dupe valorant users (empty puuid means no valorant account, so never a dupe)
+        let already_tracked_val_puuid = !account.val_puuid.is_empty()
+            && self
+                .accounts
+                .iter()
+                .any(|acct| acct.val_puuid == account.val_puuid);
         if already_tracked_val_puuid {
             return Err(DbError::DuplicatePuuid {
                 puuid: account.val_puuid,
             });
         }
 
-        // no dupe lol users
-        let already_tracked_lol_puuid = self
-            .accounts
-            .iter()
-            .any(|acct| acct.lol_puuid == account.lol_puuid);
+        // no dupe lol users (empty puuid means no lol account, so never a dupe)
+        let already_tracked_lol_puuid = !account.lol_puuid.is_empty()
+            && self
+                .accounts
+                .iter()
+                .any(|acct| acct.lol_puuid == account.lol_puuid);
         if already_tracked_lol_puuid {
             return Err(DbError::DuplicatePuuid {
                 puuid: account.lol_puuid,
