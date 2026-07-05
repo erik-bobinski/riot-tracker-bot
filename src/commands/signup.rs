@@ -5,8 +5,8 @@ use crate::types::{Context, Error};
 #[poise::command(slash_command)]
 pub async fn signup(
     ctx: Context<'_>,
-    #[description = "Riot Name"] riot_name: String,
-    #[description = "Riot Tag after the # (e.g. NA1)"] riot_tag: String,
+    #[description = "before the # (e.g. syan)"] riot_name: String,
+    #[description = "after the # (e.g. NA1)"] riot_tag: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
 
