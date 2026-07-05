@@ -7,6 +7,8 @@ pub async fn signup(
     #[description = "Riot Name"] riot_name: String,
     #[description = "Riot Tag"] riot_tag: String,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
+
     let valorant_account = match ctx
         .data()
         .henrik_client
