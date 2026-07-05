@@ -70,15 +70,28 @@ pub struct AccountData {
 pub struct MatchSummary {
     pub metadata: MatchMetadata,
     pub players: MatchPlayers,
+    pub teams: MatchTeams,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct MatchMetadata {
     pub map: String,
     pub mode: String,
-    game_length: u64,
+    pub game_length: u64,
     region: String,
     pub matchid: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MatchTeams {
+    pub red: TeamStats,
+    pub blue: TeamStats,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TeamStats {
+    pub rounds_won: u32,
+    pub rounds_lost: u32,
 }
 
 #[derive(Debug, Deserialize)]

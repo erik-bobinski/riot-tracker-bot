@@ -15,6 +15,8 @@ pub struct MatchResult {
     pub game_name: &'static str,
     pub game_mode: String,
     pub map: Option<String>,
+    pub duration_secs: Option<u64>,
+    pub round_score: Option<(u32, u32)>,
     pub own_team: Vec<PlayerLine>,
     pub enemy_team: Vec<PlayerLine>,
 }
@@ -45,10 +47,21 @@ pub fn val_match_to_result(
         is_tracked_user: p.puuid == tracked_puuid,
     };
 
+    let round_score = tracked_team.as_deref().map(|team| {
+        let stats = if team.eq_ignore_ascii_case("red") {
+            &match_summary.teams.red
+        } else {
+            &match_summary.teams.blue
+        };
+        (stats.rounds_won, stats.rounds_lost)
+    });
+
     MatchResult {
         game_name: "Valorant",
         game_mode: match_summary.metadata.mode.clone(),
         map: Some(match_summary.metadata.map.clone()),
+        duration_secs: Some(match_summary.metadata.game_length),
+        round_score,
         own_team: own_team.into_iter().map(to_line).collect(),
         enemy_team: enemy_team.into_iter().map(to_line).collect(),
     }
@@ -81,6 +94,8 @@ pub fn lol_match_to_result(match_summary: &lol::MatchSummary, tracked_puuid: &st
         game_name: "League of Legends",
         game_mode: match_summary.info.game_mode.clone(),
         map: None,
+        duration_secs: Some(match_summary.info.game_duration),
+        round_score: None,
         own_team: own_team.into_iter().map(to_line).collect(),
         enemy_team: enemy_team.into_iter().map(to_line).collect(),
     }
@@ -92,10 +107,17 @@ pub fn format_match_message(discord_name: &str, result: &MatchResult) -> String 
         discord_name, result.game_name
     );
 
-    match &result.map {
-        Some(map) => message.push_str(&format!("{} / {}\n\n", result.game_mode, map)),
-        None => message.push_str(&format!("{}\n\n", result.game_mode)),
+    let mut header_parts = vec![result.game_mode.clone()];
+    if let Some(map) = &result.map {
+        header_parts.push(map.clone());
     }
+    if let Some(duration_secs) = result.duration_secs {
+        header_parts.push(format_duration(duration_secs));
+    }
+    if let Some((rounds_won, rounds_lost)) = result.round_score {
+        header_parts.push(format!("{}-{}", rounds_won, rounds_lost));
+    }
+    message.push_str(&format!("{}\n\n", header_parts.join(" / ")));
 
     message.push_str(&format_leaderboard(&result.own_team));
     message.push_str("\n\n");
@@ -125,4 +147,8 @@ fn format_leaderboard(players: &[PlayerLine]) -> String {
 
 fn kd_ratio(p: &PlayerLine) -> f64 {
     p.kills as f64 / p.deaths.max(1) as f64
+}
+
+fn format_duration(total_secs: u64) -> String {
+    format!("{}m {}s", total_secs / 60, total_secs % 60)
 }
