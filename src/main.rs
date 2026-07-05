@@ -2,6 +2,7 @@ use crate::db::Database;
 use crate::types::Data;
 use serenity::prelude::*;
 use std::env;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 mod commands;
@@ -46,6 +47,7 @@ async fn main() {
                 let db = Arc::new(Mutex::new(db));
                 let henrik_client = Arc::new(riot_api::valorant::HenrikClient::new(henrik_api_key));
                 let riot_client = Arc::new(riot_api::lol::RiotClient::new(riot_api_key));
+                let polling_paused = Arc::new(AtomicBool::new(false));
 
                 tokio::spawn(polling::run(
                     ctx.http.clone(),
@@ -53,12 +55,14 @@ async fn main() {
                     henrik_client.clone(),
                     riot_client.clone(),
                     notification_channel_id,
+                    polling_paused.clone(),
                 ));
 
                 Ok(Data {
                     henrik_client,
                     riot_client,
                     db,
+                    polling_paused,
                 })
             })
         })

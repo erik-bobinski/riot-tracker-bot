@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,11 +12,16 @@ pub async fn run(
     henrik_client: Arc<HenrikClient>,
     riot_client: Arc<RiotClient>,
     notification_channel_id: serenity::model::id::ChannelId,
+    paused: Arc<AtomicBool>,
 ) {
     let mut interval = tokio::time::interval(Duration::from_secs(60));
 
     loop {
         interval.tick().await;
+
+        if paused.load(Ordering::Relaxed) {
+            continue;
+        }
 
         let accounts = db.lock().await.get_accounts();
 
