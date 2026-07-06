@@ -62,6 +62,7 @@ pub enum DbError {
     DuplicatePuuid { puuid: String },
     DuplicateDiscordUserId { discord_user_id: u64 },
     NotFound { discord_user_id: u64 },
+    UnsupportedSchema { version: u32 },
 }
 impl From<std::io::Error> for DbError {
     fn from(err: std::io::Error) -> Self {
@@ -85,10 +86,53 @@ impl std::fmt::Display for DbError {
             DbError::NotFound { discord_user_id } => {
                 write!(f, "discord account not found: {discord_user_id}")
             }
+            DbError::UnsupportedSchema { version } => {
+                write!(
+                    f,
+                    "db schema version {version} has no migration path to version {SCHEMA_VERSION}"
+                )
+            }
         }
     }
 }
 impl std::error::Error for DbError {}
+
+// current on-disk schema version; bump this when making a breaking change to
+// DatabaseAccount (rename/retype/restructure) and add a matching step in migrate().
+// purely additive changes don't need a bump, #[serde(default)] on the new field
+// covers those
+const SCHEMA_VERSION: u32 = 1;
+
+// on-disk envelope; accounts stay raw json here so old schema versions can be
+// migrated before they ever have to fit the current DatabaseAccount shape
+#[derive(Deserialize)]
+struct DatabaseFile {
+    schema_version: u32,
+    accounts: Vec<serde_json::Value>,
+}
+
+// applies one step per pass until the data reaches SCHEMA_VERSION, rewriting the
+// raw account values in place
+fn migrate(
+    version: u32,
+    accounts: Vec<serde_json::Value>,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    if version > SCHEMA_VERSION {
+        // file written by a newer build (e.g. after a rollback); refuse rather
+        // than guess at fields we don't know about
+        return Err(DbError::UnsupportedSchema { version });
+    }
+
+    for step in version..SCHEMA_VERSION {
+        match step {
+            // one arm per breaking change, rewriting from `step` to `step + 1`, e.g.:
+            // 1 => accounts = accounts.into_iter().map(rename_puuid_fields).collect(),
+            _ => return Err(DbError::UnsupportedSchema { version: step }),
+        }
+    }
+
+    Ok(accounts)
+}
 
 pub struct Database {
     path: PathBuf,
@@ -100,7 +144,22 @@ impl Database {
 
         let accounts = if path.exists() {
             let contents = fs::read_to_string(&path)?;
-            serde_json::from_str(&contents)?
+            let value: serde_json::Value = serde_json::from_str(&contents)?;
+
+            // files predating the versioned envelope are a bare account array,
+            // which is schema version 1 by definition
+            let file = match value {
+                serde_json::Value::Array(accounts) => DatabaseFile {
+                    schema_version: 1,
+                    accounts,
+                },
+                value => serde_json::from_value(value)?,
+            };
+
+            migrate(file.schema_version, file.accounts)?
+                .into_iter()
+                .map(|account| Ok(serde_json::from_value(account)?))
+                .collect::<Result<Vec<DatabaseAccount>, DbError>>()?
         } else {
             Vec::new()
         };
@@ -110,7 +169,10 @@ impl Database {
 
     // rewrite all contents into temp file first in case of runtime errors during file
     pub fn save(&self) -> Result<(), DbError> {
-        let contents = serde_json::to_string_pretty(&self.accounts)?;
+        let contents = serde_json::to_string_pretty(&serde_json::json!({
+            "schema_version": SCHEMA_VERSION,
+            "accounts": self.accounts,
+        }))?;
         let tmp_path = &self.path.with_extension("json.tmp");
 
         fs::write(&tmp_path, contents)?;
@@ -198,4 +260,3 @@ impl Database {
         }
     }
 }
-
