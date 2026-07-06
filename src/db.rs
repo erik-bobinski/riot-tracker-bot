@@ -21,13 +21,19 @@ pub const REPORTED_MATCH_CAP: usize = 30;
 
 // remember a match id we've reported so later polls never report it again, even if
 // the api temporarily omits newer matches from its response; keeps newest ids first
-// and drops the oldest past REPORTED_MATCH_CAP
+// and drops the oldest past REPORTED_MATCH_CAP. ids are stored lowercased and
+// compared case-insensitively so a casing change in an api response can't cause a
+// re-report; the ring is never used to build api requests, only for these checks
 pub fn remember_match(reported: &mut Vec<String>, matchid: &str) {
-    if reported.iter().any(|id| id == matchid) {
+    if contains_match(reported, matchid) {
         return;
     }
-    reported.insert(0, matchid.to_string());
+    reported.insert(0, matchid.to_ascii_lowercase());
     reported.truncate(REPORTED_MATCH_CAP);
+}
+
+pub fn contains_match(reported: &[String], matchid: &str) -> bool {
+    reported.iter().any(|id| id.eq_ignore_ascii_case(matchid))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

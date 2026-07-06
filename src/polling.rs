@@ -54,13 +54,15 @@ pub async fn run(
                     // instead of reporting the player's existing history
                     account.reported_val_match_ids = val_matches
                         .iter()
-                        .map(|m| m.metadata.matchid.clone())
+                        .map(|m| m.metadata.matchid.to_ascii_lowercase())
                         .collect();
                     account.reported_val_match_ids.truncate(db::REPORTED_MATCH_CAP);
                 } else {
                     let new_val_matches = val_matches
                         .iter()
-                        .filter(|m| !account.reported_val_match_ids.contains(&m.metadata.matchid))
+                        .filter(|m| {
+                            !db::contains_match(&account.reported_val_match_ids, &m.metadata.matchid)
+                        })
                         .collect::<Vec<_>>();
 
                     for m in new_val_matches {
@@ -114,12 +116,15 @@ pub async fn run(
                 if account.reported_lol_match_ids.is_empty() {
                     // first fetch for this account: baseline to the current window
                     // instead of reporting the player's existing history
-                    account.reported_lol_match_ids = lol_match_ids;
+                    account.reported_lol_match_ids = lol_match_ids
+                        .iter()
+                        .map(|id| id.to_ascii_lowercase())
+                        .collect();
                     account.reported_lol_match_ids.truncate(db::REPORTED_MATCH_CAP);
                 } else {
                     let new_lol_match_ids = lol_match_ids
                         .iter()
-                        .filter(|id| !account.reported_lol_match_ids.contains(id))
+                        .filter(|id| !db::contains_match(&account.reported_lol_match_ids, id))
                         .collect::<Vec<_>>();
 
                     for match_id in new_lol_match_ids {
