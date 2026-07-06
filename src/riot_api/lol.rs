@@ -89,14 +89,12 @@ impl RiotClient {
     // Unlike account-v1, match-v5 results only come back non-empty from the
     // continental cluster the account's platform actually belongs to, so we
     // have to probe each one. Returns None if the account has no match history
-    // in any cluster yet (nothing to detect from). Hands back the match ids
-    // found alongside the region so callers can baseline off the newest one
-    // without a second lookup.
-    pub async fn detect_region(&self, puuid: &str) -> Result<Option<(String, Vec<String>)>, reqwest::Error> {
+    // in any cluster yet (nothing to detect from).
+    pub async fn detect_region(&self, puuid: &str) -> Result<Option<String>, reqwest::Error> {
         for region in MATCH_REGIONS {
             let match_ids = self.get_match_ids(puuid, region).await?;
             if !match_ids.is_empty() {
-                return Ok(Some((region.to_string(), match_ids)));
+                return Ok(Some(region.to_string()));
             }
         }
 

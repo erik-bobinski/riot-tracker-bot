@@ -13,7 +13,22 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Formatter;
 use std::fs;
 use std::path::PathBuf;
-use uuid::Uuid;
+
+// cap on remembered match ids per game; must exceed the largest match-list window
+// the apis return (20 for match-v5, ~10 for henrik) so an id can't fall out of the
+// ring while the api can still return it
+pub const REPORTED_MATCH_CAP: usize = 30;
+
+// remember a match id we've reported so later polls never report it again, even if
+// the api temporarily omits newer matches from its response; keeps newest ids first
+// and drops the oldest past REPORTED_MATCH_CAP
+pub fn remember_match(reported: &mut Vec<String>, matchid: &str) {
+    if reported.iter().any(|id| id == matchid) {
+        return;
+    }
+    reported.insert(0, matchid.to_string());
+    reported.truncate(REPORTED_MATCH_CAP);
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct DatabaseAccount {
@@ -23,10 +38,14 @@ pub struct DatabaseAccount {
     pub riot_tag: String,
     pub val_puuid: String,
     pub val_region: Option<String>,
-    pub last_seen_val_match_id: Option<Uuid>,
+    // an empty ring means the account hasn't been baselined yet; the polling loop
+    // seeds it with the current match window instead of reporting existing history
+    #[serde(default)]
+    pub reported_val_match_ids: Vec<String>,
     pub lol_puuid: String,
     pub lol_region: Option<String>,
-    pub last_seen_lol_match_id: Option<String>,
+    #[serde(default)]
+    pub reported_lol_match_ids: Vec<String>,
     pub added_at: DateTime<Utc>,
 }
 
@@ -173,3 +192,4 @@ impl Database {
         }
     }
 }
+

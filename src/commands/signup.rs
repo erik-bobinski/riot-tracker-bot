@@ -30,45 +30,26 @@ pub async fn signup(
         return Ok(());
     }
 
-    let (val_puuid, val_region, last_seen_val_match_id) =
-        if let Some(valorant_account) = valorant_account {
-            // unlike lol, henrik's account lookup already tells us the region, so no
-            // brute-force detection needed; just baseline to the newest match like lol does
-            let val_matches = ctx
-                .data()
-                .henrik_client
-                .get_matches(&valorant_account.puuid, &valorant_account.region)
-                .await?;
-            let last_seen_val_match_id = val_matches
-                .first()
-                .map(|m| m.metadata.matchid.parse())
-                .transpose()?;
+    // the reported-match rings start empty; the first poll baselines them to the
+    // current match window, so matches finished before signup are never reported
+    let (val_puuid, val_region) = if let Some(valorant_account) = valorant_account {
+        // unlike lol, henrik's account lookup already tells us the region, so no
+        // brute-force detection needed
+        (valorant_account.puuid, Some(valorant_account.region))
+    } else {
+        (String::new(), None)
+    };
 
-            (
-                valorant_account.puuid,
-                Some(valorant_account.region),
-                last_seen_val_match_id,
-            )
-        } else {
-            (String::new(), None, None)
-        };
-
-    let (lol_puuid, lol_region, last_seen_lol_match_id) = if let Some(lol_account) = lol_account {
-        // baseline to the newest match on signup instead of backfilling full match
-        // data for everyone's existing history, to avoid a burst of api calls
-        let detected = ctx
+    let (lol_puuid, lol_region) = if let Some(lol_account) = lol_account {
+        let lol_region = ctx
             .data()
             .riot_client
             .detect_region(&lol_account.puuid)
             .await?;
-        let (lol_region, last_seen_lol_match_id) = match detected {
-            Some((region, match_ids)) => (Some(region), match_ids.into_iter().next()),
-            None => (None, None),
-        };
 
-        (lol_account.puuid, lol_region, last_seen_lol_match_id)
+        (lol_account.puuid, lol_region)
     } else {
-        (String::new(), None, None)
+        (String::new(), None)
     };
 
     let mut db = ctx.data().db.lock().await;
@@ -80,10 +61,8 @@ pub async fn signup(
         riot_tag,
         val_puuid,
         val_region,
-        last_seen_val_match_id,
         lol_puuid,
         lol_region,
-        last_seen_lol_match_id,
         added_at: chrono::Utc::now(),
         ..Default::default()
     })?;

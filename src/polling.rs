@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use crate::db::Database;
+use crate::db::{self, Database};
 use crate::discord;
 use crate::riot_api::{lol::RiotClient, valorant::HenrikClient};
 
@@ -34,16 +34,6 @@ pub async fn run(
                     .get_account(&account.riot_name, &account.riot_tag)
                     .await
                 {
-                    // baseline to the newest match instead of reporting their whole
-                    // history the moment the account resolves
-                    let val_matches = henrik_client
-                        .get_matches(&valorant_account.puuid, &valorant_account.region)
-                        .await
-                        .unwrap_or_default();
-                    account.last_seen_val_match_id = val_matches
-                        .first()
-                        .and_then(|m| m.metadata.matchid.parse().ok());
-
                     account.val_puuid = valorant_account.puuid;
                     account.val_region = Some(valorant_account.region);
                 }
@@ -59,27 +49,31 @@ pub async fn run(
                     Err(_) => Vec::new(),
                 };
 
-                let new_val_matches = val_matches
-                    .iter()
-                    .take_while(|m| {
-                        m.metadata.matchid.parse().ok() != account.last_seen_val_match_id
-                    })
-                    .collect::<Vec<_>>();
+                if account.reported_val_match_ids.is_empty() {
+                    // first fetch for this account: baseline to the current window
+                    // instead of reporting the player's existing history
+                    account.reported_val_match_ids = val_matches
+                        .iter()
+                        .map(|m| m.metadata.matchid.clone())
+                        .collect();
+                    account.reported_val_match_ids.truncate(db::REPORTED_MATCH_CAP);
+                } else {
+                    let new_val_matches = val_matches
+                        .iter()
+                        .filter(|m| !account.reported_val_match_ids.contains(&m.metadata.matchid))
+                        .collect::<Vec<_>>();
 
-                for m in new_val_matches {
-                    let msg = discord::format_match_message(
-                        &account.discord_name,
-                        &discord::val_match_to_result(m, &account.val_puuid),
-                    );
+                    for m in new_val_matches {
+                        let msg = discord::format_match_message(
+                            &account.discord_name,
+                            &discord::val_match_to_result(m, &account.val_puuid),
+                        );
 
-                    if let Err(e) = notification_channel_id.say(&http, msg).await {
-                        eprintln!("failed to send val match notification: {e}");
-                    }
-                }
+                        if let Err(e) = notification_channel_id.say(&http, msg).await {
+                            eprintln!("failed to send val match notification: {e}");
+                        }
 
-                if let Some(newest) = val_matches.first() {
-                    if let Ok(newest_id) = newest.metadata.matchid.parse() {
-                        account.last_seen_val_match_id = Some(newest_id);
+                        db::remember_match(&mut account.reported_val_match_ids, &m.metadata.matchid);
                     }
                 }
             }
@@ -99,12 +93,9 @@ pub async fn run(
                 }
 
                 if !account.lol_puuid.is_empty() {
-                    if let Ok(Some((region, match_ids))) =
+                    if let Ok(Some(region)) =
                         riot_client.detect_region(&account.lol_puuid).await
                     {
-                        // baseline to the newest match instead of reporting their whole
-                        // history the moment the region resolves
-                        account.last_seen_lol_match_id = match_ids.into_iter().next();
                         account.lol_region = Some(region);
                     }
                 }
@@ -120,33 +111,39 @@ pub async fn run(
                     Err(_) => Vec::new(),
                 };
 
-                let new_lol_match_ids = lol_match_ids
-                    .iter()
-                    .take_while(|id| account.last_seen_lol_match_id.as_deref() != Some(id.as_str()))
-                    .collect::<Vec<_>>();
+                if account.reported_lol_match_ids.is_empty() {
+                    // first fetch for this account: baseline to the current window
+                    // instead of reporting the player's existing history
+                    account.reported_lol_match_ids = lol_match_ids;
+                    account.reported_lol_match_ids.truncate(db::REPORTED_MATCH_CAP);
+                } else {
+                    let new_lol_match_ids = lol_match_ids
+                        .iter()
+                        .filter(|id| !account.reported_lol_match_ids.contains(id))
+                        .collect::<Vec<_>>();
 
-                for match_id in new_lol_match_ids {
-                    let summary = match riot_client.get_match(match_id, lol_region).await {
-                        Ok(summary) => summary,
-                        Err(_) => continue,
-                    };
+                    for match_id in new_lol_match_ids {
+                        let summary = match riot_client.get_match(match_id, lol_region).await {
+                            Ok(summary) => summary,
+                            // not remembered, so the next poll retries this match
+                            Err(_) => continue,
+                        };
 
-                    let msg = discord::format_match_message(
-                        &account.discord_name,
-                        &discord::lol_match_to_result(&summary, &account.lol_puuid),
-                    );
+                        let msg = discord::format_match_message(
+                            &account.discord_name,
+                            &discord::lol_match_to_result(&summary, &account.lol_puuid),
+                        );
 
-                    if let Err(e) = notification_channel_id.say(&http, msg).await {
-                        eprintln!("failed to send lol match notification: {e}");
+                        if let Err(e) = notification_channel_id.say(&http, msg).await {
+                            eprintln!("failed to send lol match notification: {e}");
+                        }
+
+                        db::remember_match(&mut account.reported_lol_match_ids, match_id);
                     }
-                }
-
-                if let Some(newest_id) = lol_match_ids.first() {
-                    account.last_seen_lol_match_id = Some(newest_id.clone());
                 }
             }
 
-            // update last seen match ids
+            // persist the updated reported-match rings
             if let Err(e) = db.lock().await.update_account(account) {
                 eprintln!("failed to persist updated account: {e}");
             }
