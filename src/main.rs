@@ -11,6 +11,7 @@ mod discord;
 mod polling;
 mod riot_api;
 mod types;
+mod web;
 
 #[tokio::main]
 async fn main() {
@@ -18,6 +19,12 @@ async fn main() {
         dotenv::dotenv().ok();
         env::var("DISCORD_TOKEN").expect("Expected a discord bot env var in environment")
     });
+
+    let port: u16 = env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
+    tokio::spawn(web::serve(port));
 
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
