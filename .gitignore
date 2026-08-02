@@ -8,4 +8,6 @@ accounts.test.json
 *.pnpm-store
 *.sqlite
 *.sqlite-*
+.claude/worktrees/
+.claude/settings.local.json
 /scripts/out/
