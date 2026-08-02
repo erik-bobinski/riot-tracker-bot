@@ -36,14 +36,98 @@ describe("match embeds", () => {
       },
       {},
     );
-    const rendered = `${embed.title}\n${embed.description}`;
+    const rendered = `${embed.title}\n${embed.description}\n${JSON.stringify(embed.fields)}`;
     expect(rendered).toContain("Victory — Ranked Solo/Duo · Summoner's Rift");
     expect(rendered).toContain("13–8");
-    expect(rendered).toContain(
-      "**Mock#NA1** (Ahri) · 20/1/9 · 200 CS · 30k dmg · Penta Kill",
-    );
-    expect(rendered).toContain("· Penta Kill");
+    expect(embed.description).toContain("**Penta Kill** — Mock#NA1");
+    expect(embed.fields).toEqual([
+      { name: "Player", value: "**Mock#NA1** (Ahri)", inline: true },
+      { name: "K/D/A", value: "20/1/9", inline: true },
+      { name: "Stats", value: "200 CS · 30k dmg", inline: true },
+    ]);
     expect(rendered).not.toMatch(/Â|â€|ðŸ/);
+  });
+  it("renders each team as an aligned three-column table", () => {
+    const player = (overrides: {
+      puuid: string;
+      team: string;
+      riotName: string;
+      kills: number;
+      sortKey: number;
+    }) => ({
+      puuid: Puuid.make(overrides.puuid),
+      team: overrides.team,
+      riotName: overrides.riotName,
+      riotTag: "NA1",
+      character: "Ahri",
+      kills: overrides.kills,
+      deaths: 2,
+      assists: 3,
+      stat: "100 CS · 10k dmg",
+      sortKey: overrides.sortKey,
+    });
+    const embed = matchEmbed(
+      {
+        discordNames: ["One"],
+        trackedPuuids: ["one"],
+        match: {
+          matchId: MatchId.make("two-teams"),
+          game: "lol",
+          date: EpochMillis.make(1_000),
+          mode: "Ranked Solo/Duo",
+          durationSeconds: 1_234,
+          surrendered: false,
+          players: [
+            player({
+              puuid: "ally-low",
+              team: "100",
+              riotName: "AllyLow",
+              kills: 1,
+              sortKey: 1,
+            }),
+            player({
+              puuid: "one",
+              team: "100",
+              riotName: "Mock",
+              kills: 20,
+              sortKey: 29,
+            }),
+            player({
+              puuid: "enemy-long",
+              team: "200",
+              riotName: "AVeryLongRiotNameIndeed",
+              kills: 5,
+              sortKey: 5,
+            }),
+          ],
+          teams: [
+            { id: "100", won: true },
+            { id: "200", won: false },
+          ],
+        },
+      },
+      {},
+    );
+    const fields = embed.fields ?? [];
+    expect(fields).toHaveLength(6);
+    expect(fields.slice(0, 3).map((field) => field.name)).toEqual([
+      "Player",
+      "K/D/A",
+      "Stats",
+    ]);
+    // Second team continues the table without repeating headers
+    expect(fields.slice(3).map((field) => field.name)).toEqual([
+      "​",
+      "​",
+      "​",
+    ]);
+    // Rows sort by sortKey and stay line-aligned across the three columns
+    expect(fields[0]?.value).toBe("**Mock#NA1** (Ahri)\nAllyLow#NA1 (Ahri)");
+    expect(fields[1]?.value).toBe("20/2/3\n1/2/3");
+    expect(fields[2]?.value).toBe("100 CS · 10k dmg\n100 CS · 10k dmg");
+    // Long names truncate so cells never wrap and desync the columns
+    expect(fields[3]?.value).toBe("AVeryLongRiotName… (Ahri)");
+    expect(fields.every((field) => field.inline)).toBe(true);
   });
   it("uses rank emojis without redundant rank labels in leaderboards", () => {
     const league = matchEmbed(
@@ -78,8 +162,8 @@ describe("match embeds", () => {
       },
       { "lol.diamond": "<:diamond:1>" },
     );
-    expect(league.description).toContain("<:diamond:1> II · **Mock#NA1**");
-    expect(league.description).not.toContain("Diamond II");
+    expect(league.fields?.[0]?.value).toContain("<:diamond:1> II **Mock#NA1**");
+    expect(JSON.stringify(league)).not.toContain("Diamond II");
 
     const valorant = matchEmbed(
       {
@@ -113,8 +197,10 @@ describe("match embeds", () => {
       },
       { "valorant.diamond_1": "<:diamond_1:2>" },
     );
-    expect(valorant.description).toContain("<:diamond_1:2> · **Mock#NA1**");
-    expect(valorant.description).not.toContain("Diamond 1");
+    expect(valorant.fields?.[0]?.value).toContain(
+      "<:diamond_1:2> **Mock#NA1**",
+    );
+    expect(JSON.stringify(valorant)).not.toContain("Diamond 1");
   });
   it("renders compact game-specific rank embeds", () => {
     const valorant = rankEmbed({

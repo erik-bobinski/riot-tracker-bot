@@ -41,30 +41,64 @@ const rankEmoji = (player: MatchPlayer, game: GameId, emojis: RankEmojis) => {
 const lolDivision = (rank: string | undefined) =>
   rank?.match(/\b(IV|III|II|I)$/)?.[1];
 
-const leaderboard = (
+// Keeps every leaderboard cell on a single line so the three inline
+// columns stay row-aligned; a wrapped cell would shift its whole column.
+const NAME_MAX_LENGTH = 18;
+
+const truncateName = (value: string) =>
+  value.length > NAME_MAX_LENGTH
+    ? `${value.slice(0, NAME_MAX_LENGTH - 1)}…`
+    : value;
+
+interface TeamColumns {
+  readonly players: string;
+  readonly kda: string;
+  readonly stats: string;
+  readonly flairs: ReadonlyArray<string>;
+}
+
+const teamColumns = (
   players: ReadonlyArray<MatchPlayer>,
   trackedPuuids: ReadonlySet<string>,
   game: GameId,
   emojis: RankEmojis,
-) =>
-  [...players]
+): TeamColumns => {
+  const rows = [...players]
     .sort((left, right) => right.sortKey - left.sortKey)
     .map((player) => {
-      const rawName = `${player.riotName}#${player.riotTag}`;
+      const rawName = truncateName(`${player.riotName}#${player.riotTag}`);
       const name = trackedPuuids.has(player.puuid) ? `**${rawName}**` : rawName;
       const icon = rankEmoji(player, game, emojis);
       const division = game === "lol" && icon ? lolDivision(player.rank) : "";
-      return [
-        icon ? `${icon}${division ? ` ${division}` : ""}` : undefined,
-        `${name} (${player.character})`,
-        `${player.kills}/${player.deaths}/${player.assists}`,
-        player.stat,
-        player.flair,
-      ]
-        .filter((value): value is string => Boolean(value))
-        .join(" · ");
-    })
-    .join("\n");
+      const prefix = icon ? `${icon}${division ? ` ${division}` : ""} ` : "";
+      return {
+        player: `${prefix}${name} (${player.character})`,
+        kda: `${player.kills}/${player.deaths}/${player.assists}`,
+        stat: player.stat,
+        flair: player.flair ? `**${player.flair}** — ${rawName}` : undefined,
+      };
+    });
+  return {
+    players: rows.map((row) => row.player).join("\n"),
+    kda: rows.map((row) => row.kda).join("\n"),
+    stats: rows.map((row) => row.stat).join("\n"),
+    flairs: rows
+      .map((row) => row.flair)
+      .filter((value): value is string => Boolean(value)),
+  };
+};
+
+const leaderboardFields = (
+  teams: ReadonlyArray<TeamColumns>,
+): Array<Discord.RichEmbedField> =>
+  teams.flatMap((columns, index) => {
+    const header = (label: string) => (index === 0 ? label : "​");
+    return [
+      { name: header("Player"), value: columns.players, inline: true },
+      { name: header("K/D/A"), value: columns.kda, inline: true },
+      { name: header("Stats"), value: columns.stats, inline: true },
+    ];
+  });
 
 export const matchEmbed = (
   report: MatchReport,
@@ -93,7 +127,11 @@ export const matchEmbed = (
     .map((team) =>
       report.match.players.filter((player) => player.team === team.id),
     )
-    .filter((players) => players.length > 0);
+    .filter((players) => players.length > 0)
+    .map((players) =>
+      teamColumns(players, trackedPuuids, report.match.game, rankEmojis),
+    );
+  const flairs = teams.flatMap((columns) => columns.flairs);
   const info = [
     `Started <t:${Math.floor(report.match.date / 1000)}:t>`,
     `${formatDuration(report.match.durationSeconds)}${report.match.surrendered ? " (surrender)" : ""}`,
@@ -106,13 +144,9 @@ export const matchEmbed = (
     description: [
       `${nameList(report.discordNames)} just finished a **${gameNames[report.match.game]}** game`,
       info.join(" · "),
-      "",
-      teams
-        .map((players) =>
-          leaderboard(players, trackedPuuids, report.match.game, rankEmojis),
-        )
-        .join("\n\n"),
+      ...(flairs.length > 0 ? [flairs.join("\n")] : []),
     ].join("\n"),
+    fields: leaderboardFields(teams),
     color,
     ...(thumbnail ? { thumbnail: { url: thumbnail } } : {}),
   };

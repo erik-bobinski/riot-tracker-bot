@@ -8,3 +8,4 @@ accounts.test.json
 *.pnpm-store
 *.sqlite
 *.sqlite-*
+/scripts/out/
